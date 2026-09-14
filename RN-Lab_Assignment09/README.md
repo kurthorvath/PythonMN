@@ -1,6 +1,6 @@
-# RN-Lab – ÜB9
+# RN-Lab – ÜB
 
-This package keeps the ÜB9 assignment scope unchanged:
+This package keeps the ÜB8 assignment scope unchanged:
 Ethernet, ARP and switching on a four-host LAN.
 
 Start:

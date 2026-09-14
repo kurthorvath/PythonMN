@@ -6,7 +6,7 @@ Infrastructure only.
 Base topology:
     client -- r1 -- r2 -- server
 
-Students begin modifying this file at Ü 6.6.
+Students begin modifying this file at Ü 6.8.
 """
 
 from mininet.topo import Topo

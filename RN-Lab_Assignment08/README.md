@@ -1,51 +1,36 @@
 # RN-Lab – ÜB8
 
-This package implements the **initial topology from Ü8.1**. The
-assignment text is the specification.
+This package keeps the ÜB8 assignment scope unchanged:
+Ethernet, ARP and switching on a four-host LAN.
 
-## Initial topology
-
-    client1 \
-              switch -- r1 -- r2 -- server
-    client2 /
-
-The two clients are on the same left LAN.
-
-## Important
-
-The additional router `r3` and the alternative path are deliberately
-NOT included in the supplied topology. They are introduced by the
-student in Ü8.2, exactly as required by the assignment.
-
-Likewise, the different link delays of Ü8.3 are configured by the
-student in `topology.py`.
-
-The startup script only prepares and verifies the initial Ü8.1
-environment.
-
-## Start
+Start:
 
     sudo python3 start_lab.py
 
-The script explicitly configures the initial IP addresses and routes,
-prints the actual configuration, verifies the initial end-to-end
-connection, and then opens the terminals.
+The startup script:
+- creates the four-host / one-switch LAN
+- explicitly configures the IPv4 addresses
+- prints the actual interface/routing state
+- verifies LAN connectivity
+- opens terminals only after successful verification
 
-## Initial addressing
-
+Addresses:
 - client1: 10.0.1.2/24
 - client2: 10.0.1.3/24
-- r1-eth0: 10.0.1.1/24
-- r1-eth1: 10.0.12.1/30
-- r2-eth0: 10.0.12.2/30
-- r2-eth1: 10.0.2.1/24
-- server-eth0: 10.0.2.2/24
+- server1: 10.0.1.10/24
+- server2: 10.0.1.11/24
+
+No router or default gateway is required because all hosts are in the
+same IPv4 LAN.
 
 Useful commands from the assignment:
 
     ip -br addr
-    ip route
-    ping -c 3 10.0.2.2
-    traceroute 10.0.2.2
+    ip link
+    ip neigh
+    ping -c 4 10.0.1.3
+    ip neigh flush all
+    tcpdump -i client1-eth0 -nn -e arp
+    ovs-ofctl dump-flows s1
 
-The TCP client/server remain unchanged.
+The capture helper includes Ethernet headers with tcpdump -e.

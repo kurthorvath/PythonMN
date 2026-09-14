@@ -5,7 +5,7 @@ The base infrastructure is configured explicitly here rather than relying on
 implicit IP parameters in topology.py. This makes the environment deterministic
 and makes the actual configuration visible to students.
 
-Beginning with Ü 6.6, students modify the topology. At that point they may
+Beginning with Ü 6.8, students modify the topology. At that point they may
 also need to extend configure_base_network() and verify_connectivity() for
 their new topology.
 """

@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Start the RN-Lab environment for ÜB9.
+"""
+RN-Lab ÜB10 – Network Forensics
 
-The assignment text and topology are unchanged. This script explicitly
-configures the four host addresses, prints the actual network state,
-verifies LAN connectivity, and opens terminals only after verification.
+The server's default gateway is intentionally wrong. This is the
+forensic fault that students are expected to discover.
+
+The startup script verifies only the infrastructure that must work.
+It does not repair the intentional fault and does not abort because
+client-to-server communication fails.
 """
 
 import sys
@@ -12,28 +16,44 @@ from mininet.net import Mininet
 from mininet.log import setLogLevel, info
 from mininet.term import makeTerm
 
-from topology import EthernetLabTopo
+from topology import ForensicsTopo
 
 
-HOST_ADDRESSES = {
-    "client1": ("client1-eth0", "10.0.1.2/24"),
-    "client2": ("client2-eth0", "10.0.1.3/24"),
-    "server1": ("server1-eth0", "10.0.1.10/24"),
-    "server2": ("server2-eth0", "10.0.1.11/24"),
-}
+def configure_network(net):
+    c1 = net["client1"]
+    c2 = net["client2"]
+    router = net["router"]
+    server = net["server"]
 
-
-def configure_addresses(net):
-    for host_name, (interface, address) in HOST_ADDRESSES.items():
-        host = net[host_name]
+    # Explicit addresses.
+    for host, interface, address in [
+        (c1, "client1-eth0", "10.10.1.10/24"),
+        (c2, "client2-eth0", "10.10.1.11/24"),
+        (router, "router-eth0", "10.10.1.1/24"),
+        (router, "router-eth1", "10.10.2.1/24"),
+        (server, "server-eth0", "10.10.2.10/24"),
+    ]:
         host.cmd(f"ip addr flush dev {interface}")
         host.cmd(f"ip addr add {address} dev {interface}")
         host.cmd(f"ip link set dev {interface} up")
 
+    # Correct client gateways.
+    c1.cmd("ip route replace default via 10.10.1.1 dev client1-eth0")
+    c2.cmd("ip route replace default via 10.10.1.1 dev client2-eth0")
 
-def print_network_state(net):
+    # Router forwarding.
+    router.cmd("sysctl -w net.ipv4.ip_forward=1")
+
+    # INTENTIONAL FORENSIC FAULT.
+    # Do not fix this here. Students must discover it.
+    server.cmd(
+        "ip route replace default via 10.10.2.254 dev server-eth0"
+    )
+
+
+def print_state(net):
     info("\n" + "=" * 72 + "\n")
-    info("*** ÜB9: actual Ethernet/LAN configuration\n")
+    info("*** ÜB10 forensic baseline - actual configuration\n")
     info("=" * 72 + "\n")
 
     for host in net.hosts:
@@ -42,144 +62,113 @@ def print_network_state(net):
         info(host.cmd("ip route"))
         info("\n")
 
-    info("--- switch s1 ---\n")
-    info(net["s1"].cmd("ovs-ofctl show s1 2>/dev/null || true"))
-    info("\n")
+    for switch in net.switches:
+        info(f"--- {switch.name} ---\n")
+        info(switch.cmd(f"ovs-vsctl get-fail-mode {switch.name}"))
+        info("\n")
 
-    info("=" * 72 + "\n")
 
+def ping_ok(node, destination):
+    """
+    Portable Mininet command-status check.
 
-def check(node, command, description):
-    """Run a command and evaluate its exit code portably."""
-    marker = "__RN_LAB_RC__"
-    output = node.cmd(f"{command}; printf '\\n{marker}%s\\n' $?")
+    Do not use Host.lastCmdWasOK(): that method is unavailable in the
+    Mininet version used by the course VM.
+    """
+    marker = "__RN_PING_RC__"
+    output = node.cmd(
+        f"ping -c 1 -W 1 {destination}; echo {marker}$?"
+    )
 
-    rc = None
-    details = []
-
-    for line in output.rstrip().splitlines():
+    for line in output.splitlines():
         if line.startswith(marker):
             try:
-                rc = int(line[len(marker):])
+                return int(line[len(marker):]) == 0
             except ValueError:
-                rc = None
-        else:
-            details.append(line)
+                return False
 
-    success = rc == 0
-    info(f"  [{'OK' if success else 'FAILED'}] {description}\n")
-
-    if not success:
-        detail = "\n".join(details).strip()
-        if detail:
-            info(f"       {detail}\n")
-
-    return success
+    return False
 
 
-def verify_switch(net):
-    """Verify that the standalone OVS switch is operational."""
-    info("\n*** Verifying switch forwarding...\n")
+def verify_baseline(net):
+    info("*** Verifying the forensic baseline...\n")
 
-    output = net["s1"].cmd(
-        "ovs-vsctl get-fail-mode s1 2>/dev/null"
-    ).strip()
-
-    if output != "standalone":
-        info(
-            f"  [FAILED] switch s1 is not in standalone mode "
-            f"(reported: {output or 'unknown'})\n"
-        )
-        return False
-
-    info("  [OK] switch s1 is in standalone mode\n")
-
-    ports = net["s1"].cmd(
-        "ovs-ofctl show s1 2>/dev/null"
-    )
-
-    port_count = sum(
-        1 for line in ports.splitlines()
-        if "(s1-eth" in line
-    )
-
-    if port_count < 4:
-        info(
-            f"  [FAILED] switch s1 exposes only {port_count} host ports; "
-            "expected 4\n"
-        )
-        return False
-
-    info(f"  [OK] switch s1 has {port_count} host-facing ports\n")
-    return True
-
-
-def verify_connectivity(net):
-    info("\n*** Verifying LAN connectivity before opening terminals...\n")
-
+    # These paths must work even with the intentional server fault.
     tests = [
-        (net["client1"], "ping -c 1 -W 1 10.0.1.3",
-         "client1 -> client2"),
-        (net["client1"], "ping -c 1 -W 1 10.0.1.10",
-         "client1 -> server1"),
-        (net["client1"], "ping -c 1 -W 1 10.0.1.11",
-         "client1 -> server2"),
-        (net["client2"], "ping -c 1 -W 1 10.0.1.2",
-         "client2 -> client1"),
-        (net["server1"], "ping -c 1 -W 1 10.0.1.2",
-         "server1 -> client1"),
-        (net["server2"], "ping -c 1 -W 1 10.0.1.3",
-         "server2 -> client2"),
+        ("client1", "10.10.1.1", "client1 -> router"),
+        ("client2", "10.10.1.1", "client2 -> router"),
+        ("router", "10.10.2.10", "router -> server"),
     ]
 
     failures = 0
-    for node, command, description in tests:
-        if not check(node, command, description):
+
+    for host_name, destination, description in tests:
+        ok = ping_ok(net[host_name], destination)
+        info(f"  [{'OK' if ok else 'FAILED'}] {description}\n")
+        if not ok:
             failures += 1
 
     if failures:
         info(
-            f"\n*** ERROR: {failures} LAN connectivity test(s) failed.\n"
-            "*** Terminals will not be opened.\n"
+            f"\n*** ERROR: {failures} baseline infrastructure test(s) failed.\n"
+            "*** Check the switch configuration and local VM environment.\n"
+            "*** The intentional server gateway fault is not the cause of these tests.\n"
         )
         return False
 
-    info("\n*** All LAN connectivity checks passed.\n")
+    # End-to-end failure is expected and is NOT a startup error.
+    info("\n*** Checking intentional forensic symptom...\n")
+
+    c1_ok = ping_ok(net["client1"], "10.10.2.10")
+    s_ok = ping_ok(net["server"], "10.10.1.10")
+
+    info(
+        "  [{}] client1 -> server\n".format(
+            "UNEXPECTED SUCCESS" if c1_ok else "EXPECTED FAILURE"
+        )
+    )
+    info(
+        "  [{}] server -> client1\n".format(
+            "UNEXPECTED SUCCESS" if s_ok else "EXPECTED FAILURE"
+        )
+    )
+
+    info(
+        "\n*** Baseline accepted. The communication fault is intentional.\n"
+    )
     return True
 
 
 def main():
+    # No SDN controller is used. Both switches are standalone OVS.
     net = Mininet(
-        topo=EthernetLabTopo(),
+        topo=ForensicsTopo(),
         controller=None,
         autoSetMacs=True
     )
 
     try:
-        info("*** Starting ÜB9 Mininet environment...\n")
+        info("*** Starting ÜB10 Network Forensics environment...\n")
         net.start()
 
-        configure_addresses(net)
-        print_network_state(net)
+        configure_network(net)
+        print_state(net)
 
-        if not verify_switch(net):
+        if not verify_baseline(net):
             return 1
 
-        if not verify_connectivity(net):
-            return 1
-
-        info("\n*** Opening ÜB9 terminals...\n")
+        info("\n*** Opening ÜB10 terminals...\n")
 
         for host, title in [
-            (net["client1"], "ÜB9 Client 1"),
-            (net["client2"], "ÜB9 Client 2"),
-            (net["server1"], "ÜB9 Server 1"),
-            (net["server2"], "ÜB9 Server 2"),
+            (net["client1"], "ÜB10 client1"),
+            (net["client2"], "ÜB10 client2"),
+            (net["router"], "ÜB10 router"),
+            (net["server"], "ÜB10 server"),
         ]:
             makeTerm(host, title=title)
 
         try:
-            input("\nPress ENTER to stop ÜB9...")
+            input("\nPress ENTER to stop the Mininet environment...")
         except KeyboardInterrupt:
             pass
 

@@ -1,4 +1,4 @@
-# ÜB10 – Network Forensics
+# ÜB09 – Network Forensics
 
 The assignment text and forensic scenario remain unchanged. The Python
 infrastructure has been cleaned up so that topology definition and

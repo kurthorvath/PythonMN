@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""
-Start the initial RN-Lab environment for ÜB8.
+"""Start the RN-Lab environment for ÜB8.
 
-Only the initial topology from Ü8.1 is configured here.
-The additional router r3 and alternative path required in Ü8.2
-are deliberately left for the students to implement.
+The assignment text and topology are unchanged. This script explicitly
+configures the four host addresses, prints the actual network state,
+verifies LAN connectivity, and opens terminals only after verification.
 """
 
 import sys
@@ -13,73 +12,37 @@ from mininet.net import Mininet
 from mininet.log import setLogLevel, info
 from mininet.term import makeTerm
 
-from topology import RoutingLabTopo
+from topology import EthernetLabTopo
 
 
-def configure_interface(node, interface, address):
-    node.cmd(f"ip addr flush dev {interface}")
-    node.cmd(f"ip addr add {address} dev {interface}")
-    node.cmd(f"ip link set dev {interface} up")
+HOST_ADDRESSES = {
+    "client1": ("client1-eth0", "10.0.1.2/24"),
+    "client2": ("client2-eth0", "10.0.1.3/24"),
+    "server1": ("server1-eth0", "10.0.1.10/24"),
+    "server2": ("server2-eth0", "10.0.1.11/24"),
+}
 
 
-def configure_initial_addresses(net):
-    addresses = {
-        "client1": [("client1-eth0", "10.0.1.2/24")],
-        "client2": [("client2-eth0", "10.0.1.3/24")],
-        "r1": [
-            ("r1-eth0", "10.0.1.1/24"),
-            ("r1-eth1", "10.0.12.1/30"),
-        ],
-        "r2": [
-            ("r2-eth0", "10.0.12.2/30"),
-            ("r2-eth1", "10.0.2.1/24"),
-        ],
-        "server": [
-            ("server-eth0", "10.0.2.2/24"),
-        ],
-    }
-
-    for node_name, interfaces in addresses.items():
-        for interface, address in interfaces:
-            configure_interface(net[node_name], interface, address)
-
-
-def configure_initial_routes(net):
-    net["client1"].cmd(
-        "ip route replace default via 10.0.1.1 dev client1-eth0"
-    )
-    net["client2"].cmd(
-        "ip route replace default via 10.0.1.1 dev client2-eth0"
-    )
-
-    net["r1"].cmd(
-        "ip route replace 10.0.2.0/24 via 10.0.12.2 dev r1-eth1"
-    )
-
-    net["r2"].cmd(
-        "ip route replace 10.0.1.0/24 via 10.0.12.1 dev r2-eth0"
-    )
-
-    net["server"].cmd(
-        "ip route replace 10.0.1.0/24 via 10.0.2.1 dev server-eth0"
-    )
+def configure_addresses(net):
+    for host_name, (interface, address) in HOST_ADDRESSES.items():
+        host = net[host_name]
+        host.cmd(f"ip addr flush dev {interface}")
+        host.cmd(f"ip addr add {address} dev {interface}")
+        host.cmd(f"ip link set dev {interface} up")
 
 
 def print_network_state(net):
     info("\n" + "=" * 72 + "\n")
-    info("*** ÜB8 initial network configuration\n")
+    info("*** ÜB9: actual Ethernet/LAN configuration\n")
     info("=" * 72 + "\n")
 
-    for node in net.hosts:
-        info(f"\n--- {node.name} ---\n")
-        info(node.cmd("ip -br addr"))
-        info("\n")
-        info(node.cmd("ip route"))
+    for host in net.hosts:
+        info(f"\n--- {host.name} ---\n")
+        info(host.cmd("ip -br addr"))
+        info(host.cmd("ip route"))
         info("\n")
 
     info("--- switch s1 ---\n")
-    info(net["s1"].cmd("ovs-vsctl get-fail-mode s1"))
-    info("\n")
     info(net["s1"].cmd("ovs-ofctl show s1 2>/dev/null || true"))
     info("\n")
 
@@ -87,8 +50,8 @@ def print_network_state(net):
 
 
 def check(node, command, description):
-    """Run a command and evaluate its shell return code portably."""
-    marker = "__RN_RC__"
+    """Run a command and evaluate its exit code portably."""
+    marker = "__RN_LAB_RC__"
     output = node.cmd(f"{command}; printf '\\n{marker}%s\\n' $?")
 
     rc = None
@@ -114,35 +77,59 @@ def check(node, command, description):
     return success
 
 
-def verify_initial_topology(net):
-    info("\n*** Verifying initial ÜB8 topology...\n")
+def verify_switch(net):
+    """Verify that the standalone OVS switch is operational."""
+    info("\n*** Verifying switch forwarding...\n")
 
-    switch_mode = net["s1"].cmd(
-        "ovs-vsctl get-fail-mode s1"
+    output = net["s1"].cmd(
+        "ovs-vsctl get-fail-mode s1 2>/dev/null"
     ).strip()
 
-    if switch_mode != "standalone":
+    if output != "standalone":
         info(
             f"  [FAILED] switch s1 is not in standalone mode "
-            f"(reported: {switch_mode or 'unknown'})\n"
+            f"(reported: {output or 'unknown'})\n"
         )
         return False
 
     info("  [OK] switch s1 is in standalone mode\n")
 
+    ports = net["s1"].cmd(
+        "ovs-ofctl show s1 2>/dev/null"
+    )
+
+    port_count = sum(
+        1 for line in ports.splitlines()
+        if "(s1-eth" in line
+    )
+
+    if port_count < 4:
+        info(
+            f"  [FAILED] switch s1 exposes only {port_count} host ports; "
+            "expected 4\n"
+        )
+        return False
+
+    info(f"  [OK] switch s1 has {port_count} host-facing ports\n")
+    return True
+
+
+def verify_connectivity(net):
+    info("\n*** Verifying LAN connectivity before opening terminals...\n")
+
     tests = [
-        (net["client1"], "ping -c 1 -W 1 10.0.1.1",
-         "client1 -> r1"),
-        (net["client2"], "ping -c 1 -W 1 10.0.1.1",
-         "client2 -> r1"),
-        (net["r1"], "ping -c 1 -W 1 10.0.12.2",
-         "r1 -> r2"),
-        (net["r2"], "ping -c 1 -W 1 10.0.2.2",
-         "r2 -> server"),
-        (net["client1"], "ping -c 1 -W 1 10.0.2.2",
-         "client1 -> server"),
-        (net["server"], "ping -c 1 -W 1 10.0.1.2",
-         "server -> client1"),
+        (net["client1"], "ping -c 1 -W 1 10.0.1.3",
+         "client1 -> client2"),
+        (net["client1"], "ping -c 1 -W 1 10.0.1.10",
+         "client1 -> server1"),
+        (net["client1"], "ping -c 1 -W 1 10.0.1.11",
+         "client1 -> server2"),
+        (net["client2"], "ping -c 1 -W 1 10.0.1.2",
+         "client2 -> client1"),
+        (net["server1"], "ping -c 1 -W 1 10.0.1.2",
+         "server1 -> client1"),
+        (net["server2"], "ping -c 1 -W 1 10.0.1.3",
+         "server2 -> client2"),
     ]
 
     failures = 0
@@ -152,31 +139,33 @@ def verify_initial_topology(net):
 
     if failures:
         info(
-            f"\n*** ERROR: {failures} initial connectivity test(s) failed.\n"
+            f"\n*** ERROR: {failures} LAN connectivity test(s) failed.\n"
             "*** Terminals will not be opened.\n"
         )
         return False
 
-    info("\n*** Initial topology verified successfully.\n")
+    info("\n*** All LAN connectivity checks passed.\n")
     return True
 
 
 def main():
     net = Mininet(
-        topo=RoutingLabTopo(),
+        topo=EthernetLabTopo(),
         controller=None,
         autoSetMacs=True
     )
 
     try:
-        info("*** Starting ÜB8 initial Mininet environment...\n")
+        info("*** Starting ÜB8 Mininet environment...\n")
         net.start()
 
-        configure_initial_addresses(net)
-        configure_initial_routes(net)
+        configure_addresses(net)
         print_network_state(net)
 
-        if not verify_initial_topology(net):
+        if not verify_switch(net):
+            return 1
+
+        if not verify_connectivity(net):
             return 1
 
         info("\n*** Opening ÜB8 terminals...\n")
@@ -184,9 +173,8 @@ def main():
         for host, title in [
             (net["client1"], "ÜB8 Client 1"),
             (net["client2"], "ÜB8 Client 2"),
-            (net["r1"], "ÜB8 Router 1"),
-            (net["r2"], "ÜB8 Router 2"),
-            (net["server"], "ÜB8 Server"),
+            (net["server1"], "ÜB8 Server 1"),
+            (net["server2"], "ÜB8 Server 2"),
         ]:
             makeTerm(host, title=title)
 

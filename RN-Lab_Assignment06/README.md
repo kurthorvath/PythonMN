@@ -29,7 +29,7 @@ If any check fails, the terminals are not opened.
 
 ## Student topology editing
 
-The base topology remains deliberately simple. Starting with Ü 6.6,
+The base topology remains deliberately simple. Starting with Ü 6.8,
 students modify `topology.py` as required by the exercise.
 
 When a new host or interface is introduced, the corresponding IP

@@ -1,206 +1,115 @@
 #!/usr/bin/env python3
-"""
-Start the initial RN-Lab environment for ÜB7.
+"""RN-Lab Assignment 07 - starting point.
 
-Only the initial topology from Ü7.1 is configured here.
-The additional router r3 and alternative path required in Ü7.2
-are deliberately left for the students to implement.
-"""
+This script configures the supplied base topology:
+    client -- r1 -- r2 -- server
 
-import sys
+Students extend the topology and routing configuration during the
+exercise.
+"""
 
 from mininet.net import Mininet
+from mininet.cli import CLI
+from mininet.node import Host, Node
+from mininet.link import TCLink
 from mininet.log import setLogLevel, info
-from mininet.term import makeTerm
 
-from topology import RoutingLabTopo
-
-
-def configure_interface(node, interface, address):
-    node.cmd(f"ip addr flush dev {interface}")
-    node.cmd(f"ip addr add {address} dev {interface}")
-    node.cmd(f"ip link set dev {interface} up")
+from topology import RoutingTopo
 
 
-def configure_initial_addresses(net):
-    addresses = {
-        "client1": [("client1-eth0", "10.0.1.2/24")],
-        "client2": [("client2-eth0", "10.0.1.3/24")],
-        "r1": [
-            ("r1-eth0", "10.0.1.1/24"),
-            ("r1-eth1", "10.0.12.1/30"),
-        ],
-        "r2": [
-            ("r2-eth0", "10.0.12.2/30"),
-            ("r2-eth1", "10.0.2.1/24"),
-        ],
-        "server": [
-            ("server-eth0", "10.0.2.2/24"),
-        ],
-    }
+CLIENT_IP = "10.0.1.2/24"
+CLIENT_GW = "10.0.1.1"
 
-    for node_name, interfaces in addresses.items():
-        for interface, address in interfaces:
-            configure_interface(net[node_name], interface, address)
+R1_LEFT_IP = "10.0.1.1/24"
+R1_RIGHT_IP = "10.0.12.1/30"
+
+R2_LEFT_IP = "10.0.12.2/30"
+R2_RIGHT_IP = "10.0.2.1/24"
+
+SERVER_IP = "10.0.2.2/24"
+SERVER_GW = "10.0.2.1"
 
 
-def configure_initial_routes(net):
-    net["client1"].cmd(
-        "ip route replace default via 10.0.1.1 dev client1-eth0"
-    )
-    net["client2"].cmd(
-        "ip route replace default via 10.0.1.1 dev client2-eth0"
-    )
-
-    net["r1"].cmd(
-        "ip route replace 10.0.2.0/24 via 10.0.12.2 dev r1-eth1"
-    )
-
-    net["r2"].cmd(
-        "ip route replace 10.0.1.0/24 via 10.0.12.1 dev r2-eth0"
-    )
-
-    net["server"].cmd(
-        "ip route replace 10.0.1.0/24 via 10.0.2.1 dev server-eth0"
-    )
+def configure_interface(node, intf, ip):
+    node.cmd(f"ip addr flush dev {intf}")
+    node.cmd(f"ip addr add {ip} dev {intf}")
+    node.cmd(f"ip link set {intf} up")
 
 
-def print_network_state(net):
-    info("\n" + "=" * 72 + "\n")
-    info("*** ÜB7 initial network configuration\n")
-    info("=" * 72 + "\n")
-
-    for node in net.hosts:
-        info(f"\n--- {node.name} ---\n")
-        info(node.cmd("ip -br addr"))
-        info("\n")
-        info(node.cmd("ip route"))
-        info("\n")
-
-    info("--- switch s1 ---\n")
-    info(net["s1"].cmd("ovs-vsctl get-fail-mode s1"))
-    info("\n")
-    info(net["s1"].cmd("ovs-ofctl show s1 2>/dev/null || true"))
-    info("\n")
-
-    info("=" * 72 + "\n")
-
-
-def check(node, command, description):
-    """Run a command and evaluate its shell return code portably."""
-    marker = "__RN_RC__"
-    output = node.cmd(f"{command}; printf '\\n{marker}%s\\n' $?")
-
-    rc = None
-    details = []
-
-    for line in output.rstrip().splitlines():
-        if line.startswith(marker):
-            try:
-                rc = int(line[len(marker):])
-            except ValueError:
-                rc = None
-        else:
-            details.append(line)
-
-    success = rc == 0
-    info(f"  [{'OK' if success else 'FAILED'}] {description}\n")
-
-    if not success:
-        detail = "\n".join(details).strip()
-        if detail:
-            info(f"       {detail}\n")
-
-    return success
-
-
-def verify_initial_topology(net):
-    info("\n*** Verifying initial ÜB8 topology...\n")
-
-    switch_mode = net["s1"].cmd(
-        "ovs-vsctl get-fail-mode s1"
-    ).strip()
-
-    if switch_mode != "standalone":
-        info(
-            f"  [FAILED] switch s1 is not in standalone mode "
-            f"(reported: {switch_mode or 'unknown'})\n"
-        )
-        return False
-
-    info("  [OK] switch s1 is in standalone mode\n")
-
-    tests = [
-        (net["client1"], "ping -c 1 -W 1 10.0.1.1",
-         "client1 -> r1"),
-        (net["client2"], "ping -c 1 -W 1 10.0.1.1",
-         "client2 -> r1"),
-        (net["r1"], "ping -c 1 -W 1 10.0.12.2",
-         "r1 -> r2"),
-        (net["r2"], "ping -c 1 -W 1 10.0.2.2",
-         "r2 -> server"),
-        (net["client1"], "ping -c 1 -W 1 10.0.2.2",
-         "client1 -> server"),
-        (net["server"], "ping -c 1 -W 1 10.0.1.2",
-         "server -> client1"),
-    ]
-
-    failures = 0
-    for node, command, description in tests:
-        if not check(node, command, description):
-            failures += 1
-
-    if failures:
-        info(
-            f"\n*** ERROR: {failures} initial connectivity test(s) failed.\n"
-            "*** Terminals will not be opened.\n"
-        )
-        return False
-
-    info("\n*** Initial topology verified successfully.\n")
-    return True
+def show_state(node):
+    info(f"\n--- {node.name}: interfaces ---\n")
+    info(node.cmd("ip -br addr"))
+    info(f"--- {node.name}: routes ---\n")
+    info(node.cmd("ip route"))
 
 
 def main():
     net = Mininet(
-        topo=RoutingLabTopo(),
+        topo=RoutingTopo(),
         controller=None,
-        autoSetMacs=True
+        autoSetMacs=True,
+        link=TCLink,
     )
 
-    try:
-        info("*** Starting ÜB7 initial Mininet environment...\n")
-        net.start()
+    net.start()
 
-        configure_initial_addresses(net)
-        configure_initial_routes(net)
-        print_network_state(net)
+    client = net["client"]
+    r1 = net["r1"]
+    r2 = net["r2"]
+    server = net["server"]
 
-        if not verify_initial_topology(net):
-            return 1
+    # Explicit interface configuration.
+    configure_interface(client, "client-eth0", CLIENT_IP)
 
-        info("\n*** Opening ÜB7 terminals...\n")
+    configure_interface(r1, "r1-eth0", R1_LEFT_IP)
+    configure_interface(r1, "r1-eth1", R1_RIGHT_IP)
 
-        for host, title in [
-            (net["client1"], "ÜB7 Client 1"),
-            (net["client2"], "ÜB7 Client 2"),
-            (net["r1"], "ÜB7 Router 1"),
-            (net["r2"], "ÜB7 Router 2"),
-            (net["server"], "ÜB7 Server"),
-        ]:
-            makeTerm(host, title=title)
+    configure_interface(r2, "r2-eth0", R2_LEFT_IP)
+    configure_interface(r2, "r2-eth1", R2_RIGHT_IP)
 
-        try:
-            input("\nPress ENTER to stop ÜB8...")
-        except KeyboardInterrupt:
-            pass
+    configure_interface(server, "server-eth0", SERVER_IP)
 
-        return 0
+    # End-host routes.
+    client.cmd(f"ip route replace default via {CLIENT_GW}")
+    server.cmd(f"ip route replace default via {SERVER_GW}")
 
-    finally:
+    # Static routing for the supplied path.
+    r1.cmd("ip route replace 10.0.2.0/24 via 10.0.12.2 dev r1-eth1")
+    r2.cmd("ip route replace 10.0.1.0/24 via 10.0.12.1 dev r2-eth0")
+
+    info("\n=== Network state ===\n")
+    for node in (client, r1, r2, server):
+        show_state(node)
+
+    info("\n=== Connectivity checks ===\n")
+
+    checks = [
+        ("client -> r1", client.cmd("ping -c 1 -W 1 10.0.1.1")),
+        ("r1 -> r2", r1.cmd("ping -c 1 -W 1 10.0.12.2")),
+        ("r2 -> server", r2.cmd("ping -c 1 -W 1 10.0.2.2")),
+        ("client -> server", client.cmd("ping -c 2 -W 1 10.0.2.2")),
+        ("server -> client", server.cmd("ping -c 2 -W 1 10.0.1.2")),
+    ]
+
+    failed = False
+    for name, result in checks:
+        info(f"\n[{name}]\n{result}")
+        if " 0% packet loss" not in result:
+            failed = True
+
+    if failed:
+        info("\nConnectivity check failed. Terminals will not be opened.\n")
         net.stop()
+        return
+
+    info("\n=== Starting point ===\n")
+    info("Active path: client -> r1 -> r2 -> server\n")
+    info("Students extend the topology and configure an alternative path.\n")
+
+    CLI(net)
+    net.stop()
 
 
 if __name__ == "__main__":
     setLogLevel("info")
-    sys.exit(main())
+    main()

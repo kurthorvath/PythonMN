@@ -1,51 +1,91 @@
-# RN-Lab – ÜB8
+# RN-Lab Übung 7 – Starting Point
 
-This package implements the **initial topology from Ü7.1**. The
-assignment text is the specification.
+## Starting topology
 
-## Initial topology
+The supplied starting point contains only:
 
-    client1 \
-              switch -- r1 -- r2 -- server
-    client2 /
+```text
+client -- r1 -- r2 -- server
+```
 
-The two clients are on the same left LAN.
+There is **no r3** in the starting point.
 
-## Important
+The existing path is:
 
-The additional router `r3` and the alternative path are deliberately
-NOT included in the supplied topology. They are introduced by the
-student in Ü8.2, exactly as required by the assignment.
+```text
+client -> r1 -> r2 -> server
+```
 
-Likewise, the different link delays of Ü8.3 are configured by the
-student in `topology.py`.
+## Starting configuration
 
-The startup script only prepares and verifies the initial Ü7.1
-environment.
+The infrastructure script explicitly:
 
-## Start
+1. configures every supplied interface,
+2. brings every supplied interface up,
+3. configures the client and server default routes,
+4. configures the static routes for the existing path,
+5. enables IPv4 forwarding on the routers,
+6. prints the actual interface and routing state,
+7. verifies connectivity hop by hop,
+8. verifies client-to-server and server-to-client connectivity.
 
-    sudo python3 start_lab.py
+If the initial connectivity checks fail, the Mininet CLI is not opened.
 
-The script explicitly configures the initial IP addresses and routes,
-prints the actual configuration, verifies the initial end-to-end
-connection, and then opens the terminals.
+## Student task
 
-## Initial addressing
+Extend the topology with an additional router and links so that the same server can also be reached through a second path.
 
-- client1: 10.0.1.2/24
-- client2: 10.0.1.3/24
-- r1-eth0: 10.0.1.1/24
-- r1-eth1: 10.0.12.1/30
-- r2-eth0: 10.0.12.2/30
-- r2-eth1: 10.0.2.1/24
-- server-eth0: 10.0.2.2/24
+The intended final topology is:
 
-Useful commands from the assignment:
+```text
+             r3
+            /  \
+           /    \
+client -- r1    server
+           \    /
+            \  /
+             r2
+```
 
-    ip -br addr
-    ip route
-    ping -c 3 10.0.2.2
-    traceroute 10.0.2.2
+The existing path through `r2` should be replaced/deactivated when testing the alternative path.
 
-The TCP client/server remain unchanged.
+The destination should remain the same server destination. Do not create a second server.
+
+Students must determine and configure the additional interfaces, IP addresses, forwarding, and routes.
+
+## Useful commands
+
+Inspect interfaces and routes:
+
+```bash
+ip -br addr
+ip route
+ip neigh
+```
+
+Test connectivity:
+
+```bash
+ping -c 4 10.0.2.2
+traceroute 10.0.2.2
+```
+
+Inspect forwarding:
+
+```bash
+sysctl net.ipv4.ip_forward
+```
+
+Start the lab:
+
+```bash
+sudo python3 start_lab.py
+```
+
+## Infrastructure / application separation
+
+`topology.py` contains the Mininet infrastructure.
+
+`start_lab.py` contains the explicit network configuration and verification.
+
+Students modify these files when extending the topology.

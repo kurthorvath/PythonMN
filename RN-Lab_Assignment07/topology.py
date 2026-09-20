@@ -1,90 +1,66 @@
 #!/usr/bin/env python3
-"""
-RN-Lab ÜB7 initial topology.
+"""RN-Lab Assignment 07 - starting topology.
 
-This is the topology supplied for Ü7.1. Students extend topology.py
-themselves in Ü7.2 by adding r3 and the alternative path.
+Infrastructure only.
 
-The two clients are on the same left LAN. Since no SDN controller is
-used, the Open vSwitch is explicitly put into standalone mode so it
-performs ordinary Layer-2 switching.
+Starting topology:
+    client -- r1 -- r2 -- server
+
+Students extend this topology during the exercise.
 """
 
 from mininet.topo import Topo
-from mininet.node import Node, OVSSwitch
+from mininet.node import Host, Node
 from mininet.link import TCLink
+
+LINK_DELAY = "10ms"
 
 
 class LinuxRouter(Node):
-    """Linux host configured to forward IPv4 packets."""
+    """Mininet node with IPv4 forwarding enabled."""
 
     def config(self, **params):
         super().config(**params)
-        self.cmd("sysctl -w net.ipv4.ip_forward=1")
+        self.cmd("sysctl -w net.ipv4.ip_forward=1 >/dev/null")
 
     def terminate(self):
-        self.cmd("sysctl -w net.ipv4.ip_forward=0")
+        self.cmd("sysctl -w net.ipv4.ip_forward=0 >/dev/null")
         super().terminate()
 
 
-class RoutingLabTopo(Topo):
-    """
-    Initial topology for Ü7.1:
-
-        client1 \
-                  s1 ---- r1 ---- r2 ---- server
-        client2 /
-
-    client1 and client2 are on the same left LAN.
-    """
-
+class RoutingTopo(Topo):
     def build(self):
-        client1 = self.addHost("client1")
-        client2 = self.addHost("client2")
+        client = self.addHost("client", cls=Host)
         r1 = self.addHost("r1", cls=LinuxRouter)
         r2 = self.addHost("r2", cls=LinuxRouter)
-        server = self.addHost("server")
+        server = self.addHost("server", cls=Host)
 
-        # Shared left LAN.
-        # No controller is used in this lab, so the switch must operate
-        # in normal standalone Layer-2 switching mode.
-        s1 = self.addSwitch(
-            "s1",
-            cls=OVSSwitch,
-            failMode="standalone"
-        )
-
+        # client -- r1
         self.addLink(
-            client1, s1,
-            intfName1="client1-eth0",
-            cls=TCLink
-        )
-        self.addLink(
-            client2, s1,
-            intfName1="client2-eth0",
-            cls=TCLink
-        )
-        self.addLink(
-            s1, r1,
+            client, r1,
+            intfName1="client-eth0",
             intfName2="r1-eth0",
-            cls=TCLink
+            cls=TCLink,
+            delay=LINK_DELAY,
         )
 
-        # R1 -- R2 point-to-point network.
+        # r1 -- r2
         self.addLink(
             r1, r2,
             intfName1="r1-eth1",
             intfName2="r2-eth0",
-            cls=TCLink
+            cls=TCLink,
+            delay=LINK_DELAY,
         )
 
-        # R2 -- server network.
+        # r2 -- server
         self.addLink(
             r2, server,
             intfName1="r2-eth1",
             intfName2="server-eth0",
-            cls=TCLink
+            cls=TCLink,
+            delay=LINK_DELAY,
         )
 
 
-topos = {"routinglab": RoutingLabTopo}
+topos = {"routingtopo": RoutingTopo}

@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""RN-Lab Assignment 07 - starting point.
+"""RN-Lab Assignment 07 - student starting point.
 
-This script configures the supplied base topology:
+Starting topology:
     client -- r1 -- r2 -- server
 
-Students extend the topology and routing configuration during the
-exercise.
+Students add r3 and the alternative path during the exercise.
 """
 
 from mininet.net import Mininet
 from mininet.cli import CLI
-from mininet.node import Host, Node
 from mininet.link import TCLink
+from mininet.term import makeTerm
 from mininet.log import setLogLevel, info
 
 from topology import RoutingTopo
@@ -31,6 +30,7 @@ SERVER_GW = "10.0.2.1"
 
 
 def configure_interface(node, intf, ip):
+    """Configure and enable one interface."""
     node.cmd(f"ip addr flush dev {intf}")
     node.cmd(f"ip addr add {ip} dev {intf}")
     node.cmd(f"ip link set {intf} up")
@@ -58,29 +58,28 @@ def main():
     r2 = net["r2"]
     server = net["server"]
 
-    # Explicit interface configuration.
+    # Configure all supplied interfaces.
     configure_interface(client, "client-eth0", CLIENT_IP)
-
     configure_interface(r1, "r1-eth0", R1_LEFT_IP)
     configure_interface(r1, "r1-eth1", R1_RIGHT_IP)
-
     configure_interface(r2, "r2-eth0", R2_LEFT_IP)
     configure_interface(r2, "r2-eth1", R2_RIGHT_IP)
-
     configure_interface(server, "server-eth0", SERVER_IP)
 
-    # End-host routes.
-    client.cmd(f"ip route replace default via {CLIENT_GW}")
-    server.cmd(f"ip route replace default via {SERVER_GW}")
+    # Configure end-host default routes.
+    client.cmd(f"ip route replace default via {CLIENT_GW} dev client-eth0")
+    server.cmd(f"ip route replace default via {SERVER_GW} dev server-eth0")
 
-    # Static routing for the supplied path.
+    # Configure the existing r1 -> r2 -> server path.
     r1.cmd("ip route replace 10.0.2.0/24 via 10.0.12.2 dev r1-eth1")
     r2.cmd("ip route replace 10.0.1.0/24 via 10.0.12.1 dev r2-eth0")
 
+    # Show actual interface and routing state.
     info("\n=== Network state ===\n")
     for node in (client, r1, r2, server):
         show_state(node)
 
+    # Verify the supplied infrastructure before opening terminals.
     info("\n=== Connectivity checks ===\n")
 
     checks = [
@@ -94,7 +93,7 @@ def main():
     failed = False
     for name, result in checks:
         info(f"\n[{name}]\n{result}")
-        if " 0% packet loss" not in result:
+        if "0% packet loss" not in result:
             failed = True
 
     if failed:
@@ -104,7 +103,12 @@ def main():
 
     info("\n=== Starting point ===\n")
     info("Active path: client -> r1 -> r2 -> server\n")
-    info("Students extend the topology and configure an alternative path.\n")
+    info("Students must add r3 and configure an alternative path.\n")
+
+    # Open one graphical terminal per supplied Mininet node.
+    # r3 is intentionally NOT present in the starting point.
+    for node in (client, r1, r2, server):
+        makeTerm(node, title=f"RN-Lab UE7 - {node.name}")
 
     CLI(net)
     net.stop()

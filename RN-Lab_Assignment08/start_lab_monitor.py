@@ -158,6 +158,7 @@ def open_switch_monitor(net):
 
     # The switch is in the root/VM namespace; continuously display its FDB.
     makeTerm(
+        net["s1"],
         title="ÜB8 Switch Monitor",
         cmd="bash -c \"watch -n 0.5 'sudo ovs-appctl fdb/show s1'; exec bash\""
     )

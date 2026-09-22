@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RN-Lab ÜB10 – Network Forensics
+RN-Lab ÜB09 – Network Forensics
 
 The server's default gateway is intentionally wrong. This is the
 forensic fault that students are expected to discover.
@@ -148,7 +148,7 @@ def main():
     )
 
     try:
-        info("*** Starting ÜB10 Network Forensics environment...\n")
+        info("*** Starting ÜB09 Network Forensics environment...\n")
         net.start()
 
         configure_network(net)
@@ -157,13 +157,13 @@ def main():
         if not verify_baseline(net):
             return 1
 
-        info("\n*** Opening ÜB10 terminals...\n")
+        info("\n*** Opening ÜB09 terminals...\n")
 
         for host, title in [
-            (net["client1"], "ÜB10 client1"),
-            (net["client2"], "ÜB10 client2"),
-            (net["router"], "ÜB10 router"),
-            (net["server"], "ÜB10 server"),
+            (net["client1"], "ÜB09 client1"),
+            (net["client2"], "ÜB09 client2"),
+            (net["router"], "ÜB09 router"),
+            (net["server"], "ÜB09 server"),
         ]:
             makeTerm(host, title=title)
 

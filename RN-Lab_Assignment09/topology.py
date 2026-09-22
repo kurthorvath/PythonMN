@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RN-Lab ÜB10 – Network Forensics
+RN-Lab ÜB09 – Network Forensics
 
 Initial forensic topology:
 

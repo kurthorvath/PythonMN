@@ -1,36 +1,58 @@
-# RN-Lab – ÜB
+# ÜB09 – Network Forensics
 
-This package keeps the ÜB8 assignment scope unchanged:
-Ethernet, ARP and switching on a four-host LAN.
+The assignment text and forensic scenario remain unchanged. The Python
+infrastructure has been cleaned up so that topology definition and
+runtime configuration are separated.
 
-Start:
+## Start
 
     sudo python3 start_lab.py
 
-The startup script:
-- creates the four-host / one-switch LAN
-- explicitly configures the IPv4 addresses
-- prints the actual interface/routing state
-- verifies LAN connectivity
-- opens terminals only after successful verification
+The environment opens terminals for client1, client2, router and server.
 
-Addresses:
-- client1: 10.0.1.2/24
-- client2: 10.0.1.3/24
-- server1: 10.0.1.10/24
-- server2: 10.0.1.11/24
+At startup the script:
 
-No router or default gateway is required because all hosts are in the
-same IPv4 LAN.
+1. creates the existing topology
+2. explicitly configures all IPv4 addresses
+3. configures the client routes
+4. preserves the intentional server-side configuration fault
+5. prints the actual interface and routing state
+6. verifies the healthy local infrastructure
+7. confirms the expected end-to-end failure
+8. opens the terminals
 
-Useful commands from the assignment:
+The intentional fault is deliberately not repaired by the startup script.
+
+## Application test
+
+On the server:
+
+    python3 tcp_server.py
+
+On client1:
+
+    python3 tcp_client.py 10.10.2.10
+
+Do not immediately change the configuration. Follow the forensic workflow in the assignment.
+
+## Useful commands
 
     ip -br addr
-    ip link
+    ip route
     ip neigh
-    ping -c 4 10.0.1.3
-    ip neigh flush all
-    tcpdump -i client1-eth0 -nn -e arp
-    ovs-ofctl dump-flows s1
+    ping -c 3 10.10.2.10
+    traceroute 10.10.2.10
 
-The capture helper includes Ethernet headers with tcpdump -e.
+## Packet capture
+
+    ./capture_client.sh
+    ./capture_router.sh
+    ./capture_server.sh
+
+Open the resulting PCAP files in Wireshark.
+
+## Important
+
+The environment contains an intentional configuration fault. Students are expected
+to identify it from evidence. The application code is not the intended place to fix
+the problem.
